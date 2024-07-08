@@ -33,9 +33,10 @@ from einops import rearrange, repeat
 torch.multiprocessing.set_sharing_strategy('file_system')
 
 # Local Dependencies
-import vision_transformer as vits
-import vision_transformer4k as vits4k
-
+#CHANGES
+import HIPT_4K.vision_transformer as vits
+import HIPT_4K.vision_transformer4k as vits4k
+#CHANGES
 def get_vit256(pretrained_weights, arch='vit_small', device=torch.device('cuda:0')):
     r"""
     Builds ViT-256 Model.
@@ -48,7 +49,7 @@ def get_vit256(pretrained_weights, arch='vit_small', device=torch.device('cuda:0
     Returns:
     - model256 (torch.nn): Initialized model.
     """
-    
+
     checkpoint_key = 'teacher'
     device = torch.device("cpu")
     model256 = vits.__dict__[arch](patch_size=16, num_classes=0)

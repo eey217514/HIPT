@@ -22,10 +22,10 @@ from einops import rearrange, repeat
 torch.multiprocessing.set_sharing_strategy('file_system')
 
 # Local Dependencies
-import vision_transformer as vits
-import vision_transformer4k as vits4k
-from hipt_heatmap_utils import *
-from hipt_model_utils import get_vit256, get_vit4k, tensorbatch2im, eval_transforms, roll_batch2img
+import HIPT_4K.vision_transformer as vits
+import HIPT_4K.vision_transformer4k as vits4k
+from HIPT_4K.hipt_heatmap_utils import *
+from HIPT_4K.hipt_model_utils import get_vit256, get_vit4k, tensorbatch2im, eval_transforms, roll_batch2img
 
 
 class HIPT_4K(torch.nn.Module):
@@ -33,17 +33,19 @@ class HIPT_4K(torch.nn.Module):
 	HIPT Model (ViT-4K) for encoding non-square images (with [256 x 256] patch tokens), with 
 	[256 x 256] patch tokens encoded via ViT-256 using [16 x 16] patch tokens.
 	"""
+    
 	def __init__(self, 
-		model256_path: str = '../Checkpoints/vit256_small_dino.pth',
-		model4k_path: str = '../Checkpoints/vit4k_xs_dino.pth', 
-		device256=torch.device('cuda:0'), 
-		device4k=torch.device('cuda:1')):
+		model256_path: str = '/mnt/hdd/HIPT/HIPT_4K/Checkpoints/vit256_small_dino.pth',
+		model4k_path: str = '/mnt/hdd/HIPT/HIPT_4K/Checkpoints/vit4k_xs_dino.pth', 
+		device256=torch.device('cpu'), 
+		device4k=torch.device('cpu')):
 
 		super().__init__()
 		self.model256 = get_vit256(pretrained_weights=model256_path).to(device256)
 		self.model4k = get_vit4k(pretrained_weights=model4k_path).to(device4k)
 		self.device256 = device256
 		self.device4k = device4k
+
 	
 	def forward(self, x):
 		"""
@@ -67,13 +69,13 @@ class HIPT_4K(torch.nn.Module):
 		features_cls256 = []
 		for mini_bs in range(0, batch_256.shape[0], 256):                       # 3. B may be too large for ViT-256. We further take minibatches of 256.
 			minibatch_256 = batch_256[mini_bs:mini_bs+256].to(self.device256, non_blocking=True)
-			features_cls256.append(self.model256(minibatch_256).detach().cpu()) # 3. Extracting ViT-256 features from [256 x 3 x 256 x 256] image batches.
+			cls_token, patch_featurs = self.model256(minibatch_256) # 3. Extracting ViT-256 features from [256 x 3 x 256 x 256] image batches.
 
-		features_cls256 = torch.vstack(features_cls256)                         # 3. [B x 384], where 384 == dim of ViT-256 [ClS] token.
-		features_cls256 = features_cls256.reshape(w_256, h_256, 384).transpose(0,1).transpose(0,2).unsqueeze(dim=0) 
-		features_cls256 = features_cls256.to(self.device4k, non_blocking=True)  # 4. [1 x 384 x w_256 x h_256]
-		features_cls4k = self.model4k.forward(features_cls256)                  # 5. [1 x 192], where 192 == dim of ViT-4K [ClS] token.
-		return features_cls4k
+		patch_featurs = patch_featurs.detach().cpu()                         # 3. [1 x256 x 384], where 384 == dim of ViT-256 each patch output.
+		tensor_reshaped = patch_featurs.view(1, 16, 16, 384)                 # 3. converting it to 16 X 16 patches to extract mean of center cell patched 
+		center_patches = torch.stack([tensor_reshaped[0, 7, 7], tensor_reshaped[0, 7, 8], tensor_reshaped[0, 8, 7], tensor_reshaped[0, 8, 8]])
+		mean_center_patches = center_patches.mean(dim=0).reshape(1,-1)
+		return mean_center_patches
 	
 	
 	def forward_asset_dict(self, x: torch.Tensor):
